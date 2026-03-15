@@ -1,0 +1,15 @@
+{
+  "name": "nba2k-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot forwarding screenshots to Cloudflare Worker",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
