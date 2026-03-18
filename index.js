@@ -28,11 +28,7 @@ async function sendToWorker(message, att) {
       channelId:   message.channel.id,
       timestamp:   message.createdAt.toISOString(),
       messageId:   message.id,
-      author: {
-        id:          message.author.id,
-        username:    message.author.username,
-        global_name: message.author.globalName || message.author.username,
-      },
+      author:     message.author.globalName || message.author.username,
       authorId:   message.author.id,
       url:        att.url,
       proxyUrl:   att.proxyURL,
