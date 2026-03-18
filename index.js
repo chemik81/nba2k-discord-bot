@@ -63,7 +63,7 @@ async function sendToWorker(message, att) {
 }
 
 // ── Bot ready ──
-client.once('clientReady', () => {
+client.once('ready', () => {
   console.log('Bot zalogowany jako ' + client.user.tag);
   console.log('Nasluchuję kanalu: ' + CHANNEL_ID);
 });
