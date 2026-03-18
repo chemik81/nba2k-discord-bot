@@ -1,6 +1,7 @@
 /**
  * NBA 2K Liga — Discord Screenshot Bot
  * Monitors channel and forwards images to Cloudflare Worker
+ * Worker handles AI analysis and Discord reactions
  */
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -18,7 +19,6 @@ const WORKER_URL    = process.env.WORKER_URL;
 const CHANNEL_ID    = process.env.CHANNEL_ID;
 const WORKER_SECRET = process.env.WORKER_SECRET || '';
 
-// ── Send one screenshot to Worker ──
 async function sendToWorker(message, att) {
   try {
     const payload = {
@@ -47,13 +47,11 @@ async function sendToWorker(message, att) {
   }
 }
 
-// ── Bot ready ──
 client.once('ready', () => {
   console.log('Bot zalogowany jako ' + client.user.tag);
   console.log('Nasluchuję kanalu: ' + CHANNEL_ID);
 });
 
-// ── New messages ──
 client.on('messageCreate', async (message) => {
   if (message.channel.id !== CHANNEL_ID) return;
   if (message.attachments.size === 0) return;
@@ -66,28 +64,16 @@ client.on('messageCreate', async (message) => {
 
   console.log(`Nowy screen od ${message.author.username} — ${images.length} obrazek(ów)`);
 
-  // Add ⏳ immediately to show processing
-  await message.react('⏳').catch(() => {});
-
-  let allOk = true;
+  // Send each image to worker — worker handles ⏳/✅/❌ reactions
   for (const att of images) {
     const ok = await sendToWorker(message, att);
-    if (!ok) {
-      allOk = false;
-      console.error(`Blad wysylania screena ${att.name}`);
-    } else {
+    if (ok) {
       console.log(`Wyslano do Workera — ${att.name}`);
+    } else {
+      console.error(`Blad wysylania — ${att.name}`);
+      await message.react('❌').catch(() => {});
     }
-    // Small delay between multiple images
-    if (images.length > 1) await new Promise(r => setTimeout(r, 500));
-  }
-
-  // Remove ⏳ and add ✅ or ❌
-  await message.reactions.cache.get('⏳')?.remove().catch(() => {});
-  if (allOk) {
-    await message.react('✅').catch(() => {});
-  } else {
-    await message.react('❌').catch(() => {});
+    if (images.length > 1) await new Promise(r => setTimeout(r, 300));
   }
 });
 
