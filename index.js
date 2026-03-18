@@ -18,29 +18,18 @@ const WORKER_URL    = process.env.WORKER_URL;
 const CHANNEL_ID    = process.env.CHANNEL_ID;
 const WORKER_SECRET = process.env.WORKER_SECRET || '';
 
-// ── Send screenshot to Worker ──
+// ── Send one screenshot to Worker ──
 async function sendToWorker(message, att) {
   try {
     const payload = {
-      id:          message.id + '_' + att.id,
-      content:     message.content,
-      channel_id:  message.channel.id,
-      channelId:   message.channel.id,
-      timestamp:   message.createdAt.toISOString(),
-      messageId:   message.id,
-      author:     message.author.globalName || message.author.username,
-      authorId:   message.author.id,
-      url:        att.url,
-      proxyUrl:   att.proxyURL,
-      filename:   att.name,
-      attachments: [{
-        id:           att.id,
-        url:          att.url,
-        proxy_url:    att.proxyURL,
-        filename:     att.name,
-        content_type: att.contentType || 'image/png',
-        size:         att.size,
-      }]
+      url:       att.url,
+      proxyUrl:  att.proxyURL,
+      filename:  att.name || 'screenshot.png',
+      messageId: message.id,
+      channelId: message.channel.id,
+      timestamp: message.createdAt.toISOString(),
+      author:    message.author.globalName || message.author.username,
+      authorId:  message.author.id,
     };
 
     const headers = { 'Content-Type': 'application/json' };
@@ -49,7 +38,7 @@ async function sendToWorker(message, att) {
     const res = await fetch(WORKER_URL + '/discord-webhook', {
       method: 'POST',
       headers,
-      body:   JSON.stringify(payload),
+      body: JSON.stringify(payload),
     });
     return res.ok;
   } catch (err) {
@@ -73,17 +62,32 @@ client.on('messageCreate', async (message) => {
     att.contentType?.startsWith('image/') ||
     /\.(png|jpg|jpeg|webp|gif)$/i.test(att.name || '')
   );
-
   if (images.length === 0) return;
 
-  console.log('Nowy screen od ' + message.author.username);
+  console.log(`Nowy screen od ${message.author.username} — ${images.length} obrazek(ów)`);
 
+  // Add ⏳ immediately to show processing
+  await message.react('⏳').catch(() => {});
+
+  let allOk = true;
   for (const att of images) {
     const ok = await sendToWorker(message, att);
-    if (ok) {
-      console.log('Wyslano do Workera - ' + message.author.username);
-      await message.react('✅').catch(() => {});
+    if (!ok) {
+      allOk = false;
+      console.error(`Blad wysylania screena ${att.name}`);
+    } else {
+      console.log(`Wyslano do Workera — ${att.name}`);
     }
+    // Small delay between multiple images
+    if (images.length > 1) await new Promise(r => setTimeout(r, 500));
+  }
+
+  // Remove ⏳ and add ✅ or ❌
+  await message.reactions.cache.get('⏳')?.remove().catch(() => {});
+  if (allOk) {
+    await message.react('✅').catch(() => {});
+  } else {
+    await message.react('❌').catch(() => {});
   }
 });
 
