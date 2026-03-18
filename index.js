@@ -30,6 +30,8 @@ async function sendToWorker(message, att) {
     const payload = {
       imageBase64: base64,
       mimeType:    mimeType,
+      url:         att.url,
+      proxyUrl:    att.proxyURL,
       filename:    att.name || 'screenshot.png',
       messageId:   message.id,
       channelId:   message.channel.id,
