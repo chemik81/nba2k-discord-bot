@@ -35,11 +35,18 @@ async function sendToWorker(message, att) {
     const headers = { 'Content-Type': 'application/json' };
     if (WORKER_SECRET) headers['X-Webhook-Secret'] = WORKER_SECRET;
 
-    const res = await fetch(WORKER_URL + '/discord-webhook', {
+    const fullUrl = WORKER_URL + '/discord-webhook';
+    console.log('Wysylam do:', fullUrl);
+    const res = await fetch(fullUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
     });
+    console.log('Worker odpowiedz:', res.status, res.statusText);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      console.error('Worker error body:', txt);
+    }
     return res.ok;
   } catch (err) {
     console.error('Blad wysylania do Workera:', err.message);
