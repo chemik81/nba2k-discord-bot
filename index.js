@@ -1,7 +1,6 @@
 /**
  * NBA 2K Liga — Discord Screenshot Bot
- * Monitors channel and forwards images to Cloudflare Worker
- * Worker handles AI analysis and Discord reactions
+ * Downloads image and sends base64 to Worker for AI analysis
  */
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -21,31 +20,37 @@ const WORKER_SECRET = process.env.WORKER_SECRET || '';
 
 async function sendToWorker(message, att) {
   try {
+    // Download image locally (bot has access, worker doesn't)
+    const imgRes = await fetch(att.proxyURL || att.url);
+    if (!imgRes.ok) throw new Error('Cannot fetch image: ' + imgRes.status);
+    const buffer = await imgRes.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    const mimeType = att.contentType || 'image/png';
+
     const payload = {
-      url:       att.url,
-      proxyUrl:  att.proxyURL,
-      filename:  att.name || 'screenshot.png',
-      messageId: message.id,
-      channelId: message.channel.id,
-      timestamp: message.createdAt.toISOString(),
-      author:    message.author.globalName || message.author.username,
-      authorId:  message.author.id,
+      imageBase64: base64,
+      mimeType:    mimeType,
+      filename:    att.name || 'screenshot.png',
+      messageId:   message.id,
+      channelId:   message.channel.id,
+      timestamp:   message.createdAt.toISOString(),
+      author:      message.author.globalName || message.author.username,
+      authorId:    message.author.id,
     };
 
     const headers = { 'Content-Type': 'application/json' };
     if (WORKER_SECRET) headers['X-Webhook-Secret'] = WORKER_SECRET;
 
-    const fullUrl = WORKER_URL + '/discord-webhook';
-    console.log('Wysylam do:', fullUrl);
-    const res = await fetch(fullUrl, {
+    const res = await fetch(WORKER_URL + '/discord-webhook', {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
     });
-    console.log('Worker odpowiedz:', res.status, res.statusText);
+
+    console.log('Worker odpowiedz:', res.status);
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      console.error('Worker error body:', txt);
+      console.error('Worker error:', txt.slice(0, 200));
     }
     return res.ok;
   } catch (err) {
@@ -71,7 +76,6 @@ client.on('messageCreate', async (message) => {
 
   console.log(`Nowy screen od ${message.author.username} — ${images.length} obrazek(ów)`);
 
-  // Send each image to worker — worker handles ⏳/✅/❌ reactions
   for (const att of images) {
     const ok = await sendToWorker(message, att);
     if (ok) {
