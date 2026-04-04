@@ -104,37 +104,69 @@ async function handleKw5Image(message, att) {
   }
 }
 
-// ── NBA flow (unchanged) ──────────────────────────────────────
+// ── NBA flow ─────────────────────────────────────────────────
 async function handleNbaImage(message, att) {
-  try {
-    const imageBase64 = await fetchImageAsBase64(att.proxyURL || att.url);
-    const payload = {
-      imageBase64,
-      mimeType:  att.contentType || 'image/png',
-      url:       att.url,
-      proxyUrl:  att.proxyURL,
-      filename:  att.name || 'screenshot.png',
-      messageId: message.id,
-      channelId: message.channel.id,
-      timestamp: message.createdAt.toISOString(),
-      author:    message.author.globalName || message.author.username,
-      authorId:  message.author.id,
-    };
+  const channelId  = message.channel.id;
+  const messageId  = message.id;
+  const author     = message.author.globalName || message.author.username;
+  const authorId   = message.author.id;
+  const timestamp  = message.createdAt.toISOString();
+  const mimeType   = att.contentType || 'image/png';
+  const filename   = att.name || 'screenshot.png';
 
-    const res = await fetch(WORKER_URL + '/discord-webhook', {
+  // 1. React ⏳ immediately
+  await message.react('⏳').catch(() => {});
+
+  try {
+    // 2. Download image
+    const imageBase64 = await fetchImageAsBase64(att.proxyURL || att.url);
+
+    // 3. Call /nba-analyze — Gemini runs synchronously in Worker
+    console.log(`[NBA] Calling /nba-analyze for ${filename}`);
+    const analyzeRes = await fetch(WORKER_URL + '/nba-analyze', {
       method: 'POST',
       headers: workerHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ imageBase64, mimeType, filename }),
     });
 
-    console.log(`[NBA] Worker response:`, res.status);
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      console.error('Worker error:', txt.slice(0, 200));
-      await message.react('❌').catch(() => {});
+    if (!analyzeRes.ok) {
+      const txt = await analyzeRes.text().catch(() => '');
+      throw new Error(`/nba-analyze failed ${analyzeRes.status}: ${txt.slice(0, 200)}`);
     }
+
+    const { matchData } = await analyzeRes.json();
+    if (!matchData) throw new Error('No matchData returned from /nba-analyze');
+    console.log(`[NBA] Gemini OK — ${matchData.team1?.name} vs ${matchData.team2?.name}`);
+
+    // 4. Send matchData + metadata to /discord-webhook for KV save + recap
+    const saveRes = await fetch(WORKER_URL + '/discord-webhook', {
+      method: 'POST',
+      headers: workerHeaders(),
+      body: JSON.stringify({
+        matchData,
+        messageId,
+        channelId,
+        timestamp,
+        author,
+        authorId,
+        filename,
+        mimeType,
+        url: att.url,
+        proxyUrl: att.proxyURL,
+      }),
+    });
+
+    if (!saveRes.ok) {
+      const txt = await saveRes.text().catch(() => '');
+      throw new Error(`/discord-webhook save failed ${saveRes.status}: ${txt.slice(0, 200)}`);
+    }
+
+    console.log(`[NBA] Saved OK — ${filename}`);
+
   } catch(err) {
-    console.error('[NBA] Error:', err.message);
+    console.error(`[NBA] Error:`, err.message);
+    const reactions = message.reactions.cache.get('⏳');
+    if (reactions) await reactions.users.remove(client.user.id).catch(() => {});
     await message.react('❌').catch(() => {});
   }
 }
